@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.assessment</groupId>
+    <artifactId>agentic-url-shortener-parent</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+
+    <name>Agentic URL Shortener - Parent</name>
+    <description>
+        Interview assessment: a URL shortener service (url-shortener module) built and evolved by
+        an agentic SDLC orchestration layer (orchestrator module).
+    </description>
+
+    <modules>
+        <module>url-shortener</module>
+        <module>orchestrator</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.parameters>true</maven.compiler.parameters>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <spring-boot.version>3.3.4</spring-boot.version>
+        <junit.version>5.11.0</junit.version>
+    </properties>
+
+</project>

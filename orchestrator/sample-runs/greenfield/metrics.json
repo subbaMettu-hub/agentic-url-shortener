@@ -1,0 +1,78 @@
+{
+  "totalStages" : 8,
+  "passedStages" : 8,
+  "failedStages" : 0,
+  "successRate" : 1.0,
+  "totalRetries" : 0,
+  "retryFrequency" : 0.0,
+  "totalRollbacks" : 0,
+  "rollbackFrequency" : 0.0,
+  "mttrMillis" : 0,
+  "endToEndLatencyMillis" : 21026,
+  "perStage" : {
+    "DESIGN_DATA_MODEL" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 5,
+      "mttrMillis" : null
+    },
+    "REQUIREMENTS" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 45,
+      "mttrMillis" : null
+    },
+    "RELEASE_READINESS" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 9,
+      "mttrMillis" : null
+    },
+    "DESIGN_API" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 6,
+      "mttrMillis" : null
+    },
+    "IMPLEMENTATION" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 6,
+      "mttrMillis" : null
+    },
+    "STATIC_ANALYSIS" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 24,
+      "mttrMillis" : null
+    },
+    "DOCUMENTATION" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 11,
+      "mttrMillis" : null
+    },
+    "TESTING" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 20755,
+      "mttrMillis" : null
+    }
+  }
+}

@@ -1,0 +1,22 @@
+target/
+*.class
+*.log
+
+# Runtime H2 database files created when actually running the service
+url-shortener/data/
+data/
+*.mv.db
+*.trace.db
+
+# Orchestrator run output is generated fresh on every execution; a curated snapshot is
+# committed separately under orchestrator/sample-runs/ as evidence.
+orchestrator/runs/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

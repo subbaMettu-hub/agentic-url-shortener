@@ -1,0 +1,54 @@
+{
+  "totalStages" : 5,
+  "passedStages" : 4,
+  "failedStages" : 1,
+  "successRate" : 0.8,
+  "totalRetries" : 2,
+  "retryFrequency" : 0.4,
+  "totalRollbacks" : 1,
+  "rollbackFrequency" : 0.2,
+  "mttrMillis" : 0,
+  "endToEndLatencyMillis" : 821,
+  "perStage" : {
+    "IMPLEMENTATION" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 8,
+      "mttrMillis" : null
+    },
+    "STATIC_ANALYSIS" : {
+      "attempts" : 3,
+      "retries" : 2,
+      "rollbacks" : 1,
+      "passed" : false,
+      "totalDurationMillis" : 0,
+      "mttrMillis" : null
+    },
+    "REQUIREMENTS" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 47,
+      "mttrMillis" : null
+    },
+    "DESIGN_API" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 8,
+      "mttrMillis" : null
+    },
+    "DESIGN_DATA_MODEL" : {
+      "attempts" : 1,
+      "retries" : 0,
+      "rollbacks" : 0,
+      "passed" : true,
+      "totalDurationMillis" : 6,
+      "mttrMillis" : null
+    }
+  }
+}
