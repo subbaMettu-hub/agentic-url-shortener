@@ -1,10 +1,10 @@
 # Testing Approach, Limitations, and Trade-offs
 
-## `url-shortener` (39 tests, `mvn -f url-shortener/pom.xml test`)
+## `url-shortener` (53 tests, `mvn -f url-shortener/pom.xml test`)
 
 | Layer | What's covered | Example |
 |---|---|---|
-| Unit | Pure logic, mocked collaborators (Mockito) | `Base62EncoderTest`, `UrlValidatorTest`, `UrlShortenerServiceTest`, `RateLimiterServiceTest` |
+| Unit | Pure logic, mocked collaborators (Mockito) | `Base62EncoderTest`, `UrlValidatorTest` (includes SSRF-hardening cases for loopback/private/link-local hosts), `UrlShortenerServiceTest` (includes insert-race retry-on-`DataIntegrityViolationException` cases), `RateLimiterServiceTest` |
 | Integration | Full Spring context, real H2 (in-memory), MockMvc through real controllers/filters | `UrlShortenerIntegrationTest` - full create -> redirect -> analytics -> delete lifecycle, validation errors, duplicate alias conflict, QR PNG generation, actuator health |
 | Concurrency regression | Real Spring context, 100 concurrent redirects via a fixed thread pool + `CountDownLatch` | `ConcurrentClickCountTest` - proves the atomic-UPDATE click counter never loses an update; would flake under the naive read-modify-write approach it replaced |
 
@@ -26,10 +26,17 @@ mappings, different `spring.datasource.url` (`src/test/resources/application.yml
   a live HTTP burst test - the token-bucket math is simple enough that unit coverage was judged
   sufficient for a prototype; a production rollout would want a burst test before enabling it.
 
-## `orchestrator` (8 tests, `mvn -f orchestrator/pom.xml test`)
+## `orchestrator` (17 tests, `mvn -f orchestrator/pom.xml test`)
 
 The engine is tested **against synthetic agents**, deliberately - `OrchestratorEngineTest` proves
-the scheduler/governance mechanics in isolation, independent of whatever the real SDLC agents do:
+the scheduler/governance mechanics in isolation, independent of whatever the real SDLC agents do.
+`RequirementsAgentTest` and `ClaudeReasoningProviderTest` separately cover the one agent with a
+real LLM path: a fake `ReasoningProvider` pins the parsing/merging logic and the
+fallback-to-heuristic behavior (unavailable provider, empty response, malformed JSON) without any
+network access, and `ClaudeReasoningProviderTest` pins `isAvailable()`/`complete()`'s
+never-throws-just-returns-empty contract for a missing/blank API key. Neither test suite requires
+`ANTHROPIC_API_KEY` to be set - the real network round trip against the live Anthropic API has not
+been exercised in this environment (see `docs/FINAL_SUMMARY.md` limitations).
 
 - `executesDiamondDagRespectingDependencyOrder` - a diamond DAG genuinely executes its independent
   branches concurrently and respects join ordering.
@@ -51,8 +58,8 @@ the scheduler/governance mechanics in isolation, independent of whatever the rea
 
 This is a deliberate trade-off: testing the engine against synthetic agents means the tests are
 fast (<1s total), deterministic, and pin down the *contract* the engine offers to any agent -
-independent of whether that agent is the deterministic `RequirementsAgent` shipped here or a real
-LLM-backed one dropped in later. The three scenario runs themselves (`docs/SCENARIOS.md`) are the
+independent of whether that agent is fully deterministic or, like `RequirementsAgent`, backed by a
+real LLM call behind a safe fallback. The three scenario runs themselves (`docs/SCENARIOS.md`) are the
 end-to-end proof that the real agents satisfy that contract in practice, and they're re-run and
 inspected as part of delivering this assessment (see `orchestrator/sample-runs/`) rather than
 asserted against in an automated test - their output includes a live `mvn test` invocation and

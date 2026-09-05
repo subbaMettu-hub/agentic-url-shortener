@@ -56,6 +56,14 @@ public class AppProperties {
         private int capacity = 60;
         private int refillPerMinute = 60;
 
+        /**
+         * Off by default: the raw client IP is the only rate-limit key that can't be forged by
+         * the caller. Enable this only when the service sits behind a trusted reverse proxy that
+         * itself overwrites (rather than appends to) X-Forwarded-For - otherwise any client can
+         * bypass its own limit by sending a fake X-Forwarded-For header.
+         */
+        private boolean trustForwardedHeader = false;
+
         public boolean isEnabled() {
             return enabled;
         }
@@ -78,6 +86,14 @@ public class AppProperties {
 
         public void setRefillPerMinute(int refillPerMinute) {
             this.refillPerMinute = refillPerMinute;
+        }
+
+        public boolean isTrustForwardedHeader() {
+            return trustForwardedHeader;
+        }
+
+        public void setTrustForwardedHeader(boolean trustForwardedHeader) {
+            this.trustForwardedHeader = trustForwardedHeader;
         }
     }
 }

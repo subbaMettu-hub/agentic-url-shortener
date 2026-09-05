@@ -31,4 +31,23 @@ class UrlValidatorTest {
     void rejectsUnsafeOrMalformedUrls(String url) {
         assertFalse(UrlValidator.isValid(url));
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "http://localhost/admin",
+            "http://LOCALHOST:8080/admin",
+            "http://sub.localhost/admin",
+            "http://127.0.0.1/admin",
+            "http://127.0.0.5:9000/",
+            "http://0.0.0.0/",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.0.0.5/internal",
+            "http://172.16.0.1/internal",
+            "http://192.168.1.1/internal",
+            "http://[::1]/admin",
+            "http://224.0.0.1/"
+    })
+    void rejectsSsrfTargetingLoopbackPrivateOrLinkLocalHosts(String url) {
+        assertFalse(UrlValidator.isValid(url));
+    }
 }

@@ -33,16 +33,23 @@ Key technology decisions and why (see `docs/ARCHITECTURE.md` for the full ration
 - **A hand-built DAG scheduler, not a linear prompt chain**, for the orchestrator - the assessment
   explicitly requires non-linear, stateful execution with governance, which a linear chain cannot
   express (no true parallelism, no re-entry of an earlier stage, no place for a retry policy).
-- **Deterministic, simulated agents rather than live LLM calls** - reproducible for a reviewer with
-  zero API keys/cost, while the `Agent` interface makes swapping in a real LLM-backed
-  implementation a localized, one-class change (`docs/ARCHITECTURE.md` -> 3.6).
+- **Deterministic simulated agents by default, with one real LLM-backed agent as an opt-in
+  enhancement** - `RequirementsAgent` calls the Claude API when `ANTHROPIC_API_KEY` is configured
+  and falls back unconditionally to the original deterministic heuristic on any failure (missing
+  key, network error, malformed response), so the prototype stays reproducible for a reviewer with
+  zero API keys/cost, while still demonstrating genuine model reasoning when a key is available.
+  Every other agent stays deterministic; the `Agent` interface makes extending this pattern to
+  another stage a localized, one-class change (`docs/ARCHITECTURE.md` -> 3.6).
 
 ## Artifacts delivered
 
-- `url-shortener/` - working service: create/redirect/analytics/QR/rate-limit/cache/health, 39
-  passing tests.
-- `orchestrator/` - the orchestration engine, 8 passing engine tests, 3 scenario definitions, a
-  CLI (`OrchestratorCli`), and policy guardrails (`StandardPolicies`).
+- `url-shortener/` - working service: create/redirect/analytics/QR/rate-limit/cache/health, 53
+  passing tests (includes SSRF-hardening and insert-race-retry coverage added after an initial
+  self-review pass).
+- `orchestrator/` - the orchestration engine, 17 passing tests (engine + `RequirementsAgent` +
+  `ClaudeReasoningProvider`), 3 scenario definitions, a CLI (`OrchestratorCli`), and policy
+  guardrails (`StandardPolicies`).
+- `.github/workflows/ci.yml` - builds and runs both modules' test suites on every push/PR.
 - `orchestrator/sample-runs/` - committed, real output from executed runs: normalized
   requirements, design docs, static analysis reports, real test logs, documentation, release
   readiness reports, `audit.jsonl`, `metrics.json`, `report.md` - for greenfield, brownfield,
@@ -55,7 +62,7 @@ Key technology decisions and why (see `docs/ARCHITECTURE.md` for the full ration
 
 | Risk / trade-off | Mitigation / why it's acceptable here |
 |---|---|
-| Simulated agents could be seen as "not really agentic" | The orchestration model - the part the assessment names as the critical differentiator - is real: real parallel execution on real threads, real retry/backoff, real rollback, a real blocking human-approval gate, a real policy engine, a real audit log, real dynamic re-planning. What's simulated is *the content each agent's reasoning produces*, and even that is grounded in real actions where it matters most: real codebase greps, a real `mvn test` invocation, real file-presence verification against the shipped product. See `docs/ARCHITECTURE.md` -> 3.6 for the full honesty note. |
+| Simulated agents could be seen as "not really agentic" | The orchestration model - the part the assessment names as the critical differentiator - is real: real parallel execution on real threads, real retry/backoff, real rollback, a real blocking human-approval gate, a real policy engine, a real audit log, real dynamic re-planning. Most agents' reasoning is deterministic, grounded in real actions where it matters most (real codebase greps, a real `mvn test` invocation, real file-presence verification), and `RequirementsAgent` additionally calls the real Claude API when a key is configured, with the generated report always stating which analysis method actually produced it (`**Analysis method:**` line in `01-requirements.md`) rather than leaving that ambiguous. See `docs/ARCHITECTURE.md` -> 3.6 for the full honesty note. |
 | Single-instance H2 + in-memory rate limiter won't survive a multi-instance deployment | Explicitly scoped out and documented, not silently ignored - this is precisely the assumption the *ambiguous* scenario's requirements agent flags, escalates through design, and resolves via a governed re-plan rather than a silent guess (`docs/SCENARIOS.md` -> 3). |
 | `TestingAgent` shelling out to a real `mvn test` makes scenario runs slower (~15-20s) and depends on Maven being resolvable on PATH | Deliberate: a "testing agent" that doesn't actually run tests proves nothing. Documented as a trade-off in `docs/TESTING.md`, with the mitigation that a narrower, impacted-files-only test selection is a natural next step (the impact analysis to drive it already exists in `DesignApiAgent`'s output). |
 | Auto-approval mode (`AutoApprovalPort`) could be mistaken for a real human sign-off | Every auto-approval decision is labeled `"(demo mode)"` in the audit trail and decision lineage, both in the code (`AutoApprovalPort`'s own comment) and in every generated report - it is never presented as human oversight, and `--interactive` swaps in a real blocking console prompt when genuine human-in-the-loop behavior is wanted. |
@@ -78,15 +85,23 @@ Key technology decisions and why (see `docs/ARCHITECTURE.md` for the full ration
 
 ## Limitations
 
-- No real LLM is called at any point (by design - see the risk table above); the reasoning quality
-  of the simulated agents is bounded by the heuristics/checks their authors (Claude, working with
-  the assessment's author) wrote, not by genuine language understanding.
+- Only one agent (`RequirementsAgent`) is wired to a real LLM, and only when `ANTHROPIC_API_KEY` is
+  configured; every other agent's reasoning is deterministic, bounded by the heuristics/checks
+  their authors (Claude, working with the assessment's author) wrote, not by genuine language
+  understanding. Extending the same pattern to another stage is a localized change but wasn't done
+  everywhere, to keep the blast radius of this addition small and reviewable.
+- The LLM path has not been exercised against the live Anthropic API in this environment (no key
+  was available at development time) - it's covered by unit tests against a fake `ReasoningProvider`
+  that verify the parsing/merging logic and the fallback-on-failure behavior, but not the real
+  network round trip. Setting `ANTHROPIC_API_KEY` before running a scenario will exercise the real
+  call; the deterministic fallback guarantees the run still completes if that call fails.
 - Single-node only: no distributed rate limiting, no multi-instance cache coherence, no HA - all
   explicitly documented rather than silently assumed (see `docs/ARCHITECTURE.md` and the
   *ambiguous* scenario).
 - The orchestrator's policy rule set, retry/backoff tuning, and MTTR calculation are illustrative
   of the mechanism rather than tuned against real production incident data - there is no historical
   incident corpus for a brand-new prototype to tune against.
-- No CI pipeline is included (e.g. a GitHub Actions workflow running both modules' test suites on
-  every push) - out of scope for a local assessment deliverable, but a natural next step given the
-  test suites already exist and pass locally.
+- URL validation blocks literal loopback/private/link-local IP hosts to close the obvious SSRF
+  vector, but deliberately does not resolve DNS hostnames (would make validation depend on network
+  access and still be vulnerable to DNS rebinding) - a production deployment should re-validate the
+  resolved address immediately before opening the outbound connection at redirect time.

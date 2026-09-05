@@ -38,6 +38,7 @@ app:
     enabled: false
     capacity: 60
     refill-per-minute: 60
+    trust-forwarded-header: false
 
 logging:
   level:

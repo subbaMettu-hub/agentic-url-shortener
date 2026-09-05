@@ -44,13 +44,29 @@ Key engineering decisions and why:
   cache key so a removed link can't keep resolving from a stale entry.
 - **Short codes are random Base62, not sequential**, to avoid leaking creation order/volume and to
   avoid the two-write dance a sequential-ID-derived code would need (save to get an ID, then
-  update with the derived code). Collisions are checked and retried (bounded at 5 attempts).
+  update with the derived code). Collisions are checked with an `existsByShortCode` pre-check
+  (bounded at 5 attempts) *and* caught as a `DataIntegrityViolationException` around the insert
+  itself, since the check and the insert are two separate round trips and can't be made atomic
+  by wrapping them in one `@Transactional` - only the unique constraint (`ShortUrl.shortCode`)
+  is the actual correctness guarantee against a concurrent insert of the same code.
 - **URL validation allows only `http`/`https`** with a non-blank host, rejecting `javascript:`,
   `data:`, and `file:` schemes - the standard URL-shortener abuse vector for XSS/local-file tricks.
+  It additionally rejects hosts that are literal loopback/private/link-local IPs (10.0.0.0/8,
+  172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16 - which covers the cloud metadata
+  address 169.254.169.254 - and `localhost`), so the shortener can't be used as an open SSRF proxy
+  against internal infrastructure (`UrlValidator.isDisallowedHost`). This deliberately does not
+  resolve DNS hostnames (would make every validation call, and every unit test, depend on network
+  access, and a resolve-then-connect gap is still vulnerable to DNS rebinding) - a production
+  deployment should re-validate the resolved address immediately before opening the outbound
+  connection at redirect time.
 - **Rate limiting is disabled by default** (`app.rate-limit.enabled=false`) - a token bucket exists
   and is fully tested, but is opt-in so it doesn't surprise existing callers/tests. This exact
   scoping decision is what the *ambiguous* scenario's requirements agent has to make explicit and
-  document, rather than silently assuming.
+  document, rather than silently assuming. When enabled, the limiter keys on the raw socket
+  remote address by default; it only honors `X-Forwarded-For` when
+  `app.rate-limit.trust-forwarded-header=true` is explicitly set for a deployment that sits behind
+  a trusted reverse proxy which overwrites (not appends to) that header - otherwise any client
+  could bypass its own limit by sending a forged one.
 - **Persistence is H2** (file-backed at runtime, in-memory for tests) to keep the prototype
   runnable with zero external infrastructure. Documented as a known limitation in
   `docs/FINAL_SUMMARY.md` - a real deployment would use Postgres/MySQL and a shared cache (Redis)
@@ -173,27 +189,41 @@ if exceeded, so a badly-behaved agent can't loop the run forever. See the *ambig
 - **`report.md`** - human-readable rollup: final stage statuses, the metrics table, the full
   decision lineage, and per-stage attempt/retry/rollback/MTTR breakdown.
 
-### 3.6 Why the agents are simulated, not LLM-backed
+### 3.6 Why most agents are simulated, and one is real
 
 `Agent` (`orchestrator/core/Agent.java`) is a one-method functional interface:
 `StageOutcome execute(ExecutionContext ctx, StageNode self, int attemptNumber)`. The engine has no
 idea what's inside an implementation - a deterministic Java class, a rules engine, or a real
-Claude API call are all equally valid. This assessment ships deterministic implementations for two
+Claude API call are all equally valid. Most stages ship deterministic implementations for two
 concrete reasons: reviewers can run every scenario with zero API keys and zero cost, and every run
 is reproducible byte-for-byte (no LLM sampling variance to explain away). The interesting
 engineering problem the assessment is actually grading - the orchestration model itself
 (dependency graph, gates, governance, retries, rollback, re-planning, audit) - is identical either
-way. Swapping in a real LLM-backed `Agent` for, say, `RequirementsAgent` is a localized change: implement
-the interface, wire it into `SdlcWorkflowDefinition`, done.
+way.
 
-That said, the simulated agents are not just canned strings:
+`RequirementsAgent` demonstrates the swap is real, not just theoretical: it holds a
+`ReasoningProvider` (`orchestrator/llm/ReasoningProvider.java`) and, when `ClaudeReasoningProvider`
+reports `ANTHROPIC_API_KEY` is set, sends the raw requirement to the real Claude Messages API
+(plain JDK `HttpClient` - no new dependency) asking for a structured JSON requirement analysis. If
+the key is absent, the call fails, or the response doesn't parse as valid JSON, it falls back
+unconditionally to the original deterministic heuristic - `ReasoningProvider` implementations are
+contractually required to never throw, only ever return `Optional.empty()`/`isAvailable()==false`
+on any failure, so a broken or absent LLM call can never break a run. Which path actually ran is
+never left implicit: `01-requirements.md` always states its `**Analysis method:**` (`Claude API
+(live reasoning)`, `deterministic heuristic`, or `deterministic re-scoping (revision)`), and the
+decision lineage records the same. This pattern - real call, contractually-safe fallback, honest
+labeling of which one ran - is what the same swap would look like for any other stage; it wasn't
+applied everywhere so the change stays small and reviewable.
+
+That said, the deterministic agents are not just canned strings:
 
 - `DesignApiAgent` performs **real codebase reasoning** - it walks the actual `url-shortener`
   source tree and greps for concepts named in the raw requirement, listing real impacted files
   (see the brownfield trace in `docs/SCENARIOS.md`, which finds 8 real files).
-  `RequirementsAgent`'s ambiguity detection is a real (if simple) heuristic over the input text,
-  not a per-scenario `if` branch - it's what actually decides whether a requirement gets the
-  "documented assumptions + open questions" treatment.
+  `RequirementsAgent`'s heuristic fallback's ambiguity detection is a real (if simple) heuristic
+  over the input text, not a per-scenario `if` branch - it's what actually decides whether a
+  requirement gets the "documented assumptions + open questions" treatment when the LLM path isn't
+  used.
 - `TestingAgent` **actually shells out to `mvn test`** against the real `url-shortener` module and
   parses the real Surefire summary - the stage genuinely fails if the real suite fails.
 - `GreenfieldImplementationAgent` / `BrownfieldImplementationAgent` / `AmbiguousImplementationAgent`

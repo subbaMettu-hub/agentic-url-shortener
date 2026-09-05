@@ -7,11 +7,13 @@ This repository contains two things:
 1. **`url-shortener/`** - a working URL shortener service (Spring Boot / Java 17): create, redirect,
    analytics, QR codes, rate limiting, caching, health checks.
 2. **`orchestrator/`** - a standalone, dependency-graph SDLC orchestration engine (the assessment's
-   "critical differentiator"). It coordinates simulated agent stages - requirements, design,
-   implementation, static analysis, testing, documentation, release readiness - with parallel
-   execution and synchronization, bounded retries, rollback, human approval gates, policy
-   guardrails, audit logging, reliability metrics, and dynamic re-planning. It is demonstrated
-   against three scenarios for the URL shortener: **greenfield**, **brownfield**, and **ambiguous**.
+   "critical differentiator"). It coordinates agent stages - requirements, design, implementation,
+   static analysis, testing, documentation, release readiness - with parallel execution and
+   synchronization, bounded retries, rollback, human approval gates, policy guardrails, audit
+   logging, reliability metrics, and dynamic re-planning. Most stages are deterministic (and one,
+   `RequirementsAgent`, calls the real Claude API when `ANTHROPIC_API_KEY` is set - see below -
+   falling back to a deterministic heuristic otherwise). It is demonstrated against three scenarios
+   for the URL shortener: **greenfield**, **brownfield**, and **ambiguous**.
 
 Read `docs/ARCHITECTURE.md` for how the two fit together and why they're built this way,
 `docs/SCENARIOS.md` for a walkthrough of the three required scenarios with real execution traces,
@@ -64,6 +66,19 @@ curl http://localhost:8080/actuator/health                 # health check
 mvn -f orchestrator/pom.xml compile exec:java "-Dexec.args=--scenario=all"
 ```
 
+### Optional: real LLM reasoning for the requirements stage
+
+By default `RequirementsAgent` uses a deterministic heuristic - no API key needed, byte-for-byte
+reproducible. Set `ANTHROPIC_API_KEY` before running a scenario to have it call the real Claude API
+instead; on any failure (missing key, network error, malformed response) it falls back to the
+heuristic automatically, so a run always completes either way. `01-requirements.md` states which
+path actually ran (`**Analysis method:**`).
+
+```powershell
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+mvn -f orchestrator/pom.xml compile exec:java "-Dexec.args=--scenario=ambiguous"
+```
+
 Each run writes its full artifact set - normalized requirements, design docs, static analysis
 report, real test output, documentation, release readiness report, `audit.jsonl`, `metrics.json`,
 and a rolled-up `report.md` - under `orchestrator/runs/<scenario>/<runId>/`. A committed snapshot
@@ -98,7 +113,9 @@ agentic-url-shortener/
 ├── url-shortener/            Spring Boot product: APIs, analytics, reliability features, tests
 ├── orchestrator/             Standalone SDLC orchestration engine + 3 scenario definitions, tests
 │   ├── core/                 DAG engine: WorkflowGraph, OrchestratorEngine, policy, metrics, audit
-│   ├── agents/                Simulated agent implementations for each SDLC stage
+│   ├── agents/                Agent implementations for each SDLC stage (deterministic, except
+│   │                            RequirementsAgent's optional real Claude API path)
+│   ├── llm/                    ReasoningProvider abstraction + ClaudeReasoningProvider
 │   ├── workflow/              The SDLC workflow DAG definition shared by all scenarios
 │   ├── scenarios/              greenfield / brownfield / ambiguous scenario definitions
 │   ├── cli/                    OrchestratorCli entry point

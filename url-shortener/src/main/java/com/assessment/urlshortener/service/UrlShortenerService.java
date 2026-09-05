@@ -15,6 +15,7 @@ import com.assessment.urlshortener.repository.ShortUrlRepository;
 import com.assessment.urlshortener.util.UrlValidator;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,21 +38,18 @@ public class UrlShortenerService {
         this.appProperties = appProperties;
     }
 
-    @Transactional
+    /**
+     * Intentionally not wrapped in a single {@code @Transactional}: the existsByShortCode
+     * pre-check and the save below are two separate round trips regardless of transaction
+     * boundaries, so a concurrent request can still win the race between them. Leaving each
+     * {@code repository.save} call as its own (Spring Data JPA default) transaction means a
+     * failed attempt here can't poison a later retry's persistence context, and the unique
+     * constraint on shortCode is the actual correctness guarantee - the pre-check is just an
+     * optimization to avoid paying for a constraint-violation round trip on the common path.
+     */
     public CreateUrlResponse createShortUrl(CreateUrlRequest request) {
         if (!UrlValidator.isValid(request.longUrl())) {
             throw new InvalidUrlException("longUrl must be a valid absolute http(s) URL: " + request.longUrl());
-        }
-
-        String shortCode;
-        boolean isCustom = request.customAlias() != null && !request.customAlias().isBlank();
-        if (isCustom) {
-            shortCode = request.customAlias();
-            if (repository.existsByShortCode(shortCode)) {
-                throw new AliasAlreadyExistsException(shortCode);
-            }
-        } else {
-            shortCode = generateUniqueCode();
         }
 
         Instant now = Instant.now();
@@ -59,10 +57,35 @@ public class UrlShortenerService {
                 ? now.plus(Duration.of(request.expiresInSeconds(), ChronoUnit.SECONDS))
                 : null;
 
-        ShortUrl entity = new ShortUrl(shortCode, request.longUrl(), now, expiresAt, isCustom);
-        repository.save(entity);
+        boolean isCustom = request.customAlias() != null && !request.customAlias().isBlank();
+        if (isCustom) {
+            String shortCode = request.customAlias();
+            if (repository.existsByShortCode(shortCode)) {
+                throw new AliasAlreadyExistsException(shortCode);
+            }
+            try {
+                repository.save(new ShortUrl(shortCode, request.longUrl(), now, expiresAt, true));
+            } catch (DataIntegrityViolationException e) {
+                throw new AliasAlreadyExistsException(shortCode);
+            }
+            return new CreateUrlResponse(shortCode, buildShortUrl(shortCode), request.longUrl(), now, expiresAt);
+        }
 
-        return new CreateUrlResponse(shortCode, buildShortUrl(shortCode), request.longUrl(), now, expiresAt);
+        for (int attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
+            String candidate = codeGenerator.generate();
+            if (repository.existsByShortCode(candidate)) {
+                continue;
+            }
+            try {
+                repository.save(new ShortUrl(candidate, request.longUrl(), now, expiresAt, false));
+                return new CreateUrlResponse(candidate, buildShortUrl(candidate), request.longUrl(), now, expiresAt);
+            } catch (DataIntegrityViolationException e) {
+                // Lost a race with a concurrent insert of the same code between the
+                // existsByShortCode check and this save; try another candidate.
+            }
+        }
+        throw new IllegalStateException("Failed to generate a unique short code after "
+                + MAX_GENERATION_ATTEMPTS + " attempts");
     }
 
     /**
@@ -115,17 +138,6 @@ public class UrlShortenerService {
         return repository.findByShortCode(shortCode)
                 .filter(ShortUrl::isActive)
                 .orElseThrow(() -> new UrlNotFoundException(shortCode));
-    }
-
-    private String generateUniqueCode() {
-        for (int attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
-            String candidate = codeGenerator.generate();
-            if (!repository.existsByShortCode(candidate)) {
-                return candidate;
-            }
-        }
-        throw new IllegalStateException("Failed to generate a unique short code after "
-                + MAX_GENERATION_ATTEMPTS + " attempts");
     }
 
     private String buildShortUrl(String shortCode) {

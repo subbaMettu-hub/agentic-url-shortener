@@ -54,7 +54,7 @@ public final class StaticAnalysisAgent implements Agent {
         }
 
         String report = "# Static Analysis Report\n\n"
-                + "Files scanned under: " + srcRoot + "\n\n"
+                + "Files scanned under: " + relativeToWorkingDir(srcRoot) + "\n\n"
                 + "Findings: " + findings.size() + "\n\n"
                 + (findings.isEmpty() ? "No blocking patterns detected.\n"
                         : findings.stream().map(f -> "- " + f + "\n").reduce("", String::concat));
@@ -66,5 +66,22 @@ public final class StaticAnalysisAgent implements Agent {
         return StageOutcome.builder("Static analysis complete: " + findings.size() + " finding(s)")
                 .artifact("staticAnalysisFindings", findings)
                 .build();
+    }
+
+    /**
+     * Reports scanned files relative to the process working directory instead of an absolute
+     * path, so the generated report is reproducible across machines/users (an absolute path
+     * previously made every regenerated sample-run diff noisily depend on whoever ran it).
+     */
+    private static String relativeToWorkingDir(Path srcRoot) {
+        if (srcRoot == null) {
+            return "(none)";
+        }
+        Path cwd = Path.of("").toAbsolutePath();
+        try {
+            return cwd.relativize(srcRoot.toAbsolutePath()).toString().replace('\\', '/');
+        } catch (IllegalArgumentException e) {
+            return srcRoot.toString().replace('\\', '/');
+        }
     }
 }

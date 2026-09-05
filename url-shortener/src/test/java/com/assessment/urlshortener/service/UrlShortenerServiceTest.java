@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -78,6 +79,30 @@ class UrlShortenerServiceTest {
         assertNotNull(response.shortCode());
         verify(repository, times(2)).existsByShortCode(anyString());
         verify(repository).save(any(ShortUrl.class));
+    }
+
+    @Test
+    void createShortUrl_retriesWhenConcurrentInsertWinsRaceOnGeneratedCode() {
+        when(repository.existsByShortCode(anyString())).thenReturn(false);
+        when(repository.save(any(ShortUrl.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        CreateUrlRequest request = new CreateUrlRequest("https://example.com", null, null);
+
+        CreateUrlResponse response = service.createShortUrl(request);
+
+        assertNotNull(response.shortCode());
+        verify(repository, times(2)).save(any(ShortUrl.class));
+    }
+
+    @Test
+    void createShortUrl_rejectsCustomAliasWhenConcurrentInsertWinsRace() {
+        when(repository.existsByShortCode("race-alias")).thenReturn(false);
+        when(repository.save(any(ShortUrl.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"));
+        CreateUrlRequest request = new CreateUrlRequest("https://example.com", "race-alias", null);
+
+        assertThrows(AliasAlreadyExistsException.class, () -> service.createShortUrl(request));
     }
 
     @Test
