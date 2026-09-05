@@ -12,6 +12,10 @@ data/
 # committed separately under orchestrator/sample-runs/ as evidence.
 orchestrator/runs/
 
+# The blanket *.log rule above would otherwise silently swallow the real mvn-test-output
+# evidence files inside the committed sample-runs snapshot - un-ignore those specifically.
+!orchestrator/sample-runs/**/*.log
+
 # IDE
 .idea/
 *.iml
