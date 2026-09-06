@@ -97,6 +97,13 @@ class UrlShortenerIntegrationTest {
     }
 
     @Test
+    void createShortUrl_wrongHttpMethodReturnsMethodNotAllowedNotServerError() throws Exception {
+        mockMvc.perform(get("/api/v1/urls"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.status").value(405));
+    }
+
+    @Test
     void redirect_unknownCodeReturnsNotFound() throws Exception {
         mockMvc.perform(get("/{code}", "doesnotexist"))
                 .andExpect(status().isNotFound());
